@@ -1,0 +1,11 @@
+tdqm
+numpy
+torch
+torchvision
+torchaudio
+transformers
+soundfile
+datasets
+librosa
+soundfile
+pydub
