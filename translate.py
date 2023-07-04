@@ -5,6 +5,9 @@ import librosa
 import numpy as np
 import soundfile as sf
 from pydub import AudioSegment
+import pysrt
+from pysrt import SubRipTime
+import json
 
 import os
 from tqdm import tqdm
@@ -54,6 +57,9 @@ def process_audio_files(input_folder, output_folder):
     # Get all wav files in the input directory
     wav_files = [f for f in os.listdir(input_folder) if f.endswith('.wav')]
 
+    # Sort files numerically
+    wav_files.sort(key=lambda f: int(os.path.splitext(f)[0]))
+
     for wav_file in tqdm(wav_files, desc='Processing audio files'):
         file_path = os.path.join(input_folder, wav_file)
 
@@ -64,7 +70,7 @@ def process_audio_files(input_folder, output_folder):
         waveform = librosa.resample(waveform, orig_sr=rate, target_sr=16000)
 
         # Convert to int16 array
-        waveform = (32767*waveform).astype(np.int16)
+        # waveform = (32767*waveform).astype(np.int16)
 
         # Prepare the input dictionary
         sample = {
@@ -76,12 +82,40 @@ def process_audio_files(input_folder, output_folder):
         prediction = asr(sample, batch_size=8, return_timestamps=True)["chunks"]
 
         # Generate the output file path
-        output_file_path = os.path.join(output_folder, f'{os.path.splitext(wav_file)[0]}.txt')
+        output_file_path = os.path.join(output_folder, f'{os.path.splitext(wav_file)[0]}.json')
 
         # Write the output to a text file
         with open(output_file_path, 'w') as f:
-            f.write(str(prediction))
+            f.write(json.dumps(prediction, indent=4))
 
 
-split_audio('input.mp3', 'splited-input')
-process_audio_files('splited-input', 'predictions')
+def load_and_adjust_transcriptions(directory):
+    transcriptions = []
+    for filename in sorted(os.listdir(directory), key=lambda x: int(x.split(".")[0])):  # Sorting files by their integer name
+        with open(f'{directory}/{filename}', 'r') as file:
+            minute_transcriptions = json.load(file)
+        # Adjust the timestamps
+        for transcription in minute_transcriptions:
+            start_time, end_time = transcription["timestamp"]
+            start_time += int(filename.split(".")[0]) * 60  # Add the minutes offset
+            end_time += int(filename.split(".")[0]) * 60
+            transcription["timestamp"] = (start_time, end_time)
+        transcriptions.extend(minute_transcriptions)
+    return transcriptions
+
+
+
+def generate_srt(transcriptions, output_file):
+    subs = pysrt.SubRipFile()
+    for i, transcription in enumerate(transcriptions):
+        start_time = SubRipTime(seconds=transcription["timestamp"][0])
+        end_time = SubRipTime(seconds=transcription["timestamp"][1])
+        text = transcription["text"]
+        sub = pysrt.SubRipItem(i, start=start_time, end=end_time, text=text)
+        subs.append(sub)
+    subs.save(output_file, encoding='utf-8')
+
+
+if __name__ == '__main__':
+    split_audio('input.mp3', 'splited-input')
+    process_audio_files('splited-input', 'predictions')

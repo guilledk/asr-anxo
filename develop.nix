@@ -23,6 +23,7 @@ stdenv.mkDerivation {
     librosa
     soundfile
     pydub
+    pysrt
   ];
   src = null;
   shellHook = ''
