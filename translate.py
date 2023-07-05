@@ -10,7 +10,28 @@ from pysrt import SubRipTime
 import json
 
 import os
+import sys
 from tqdm import tqdm
+
+
+import subprocess
+
+
+def download_and_extract_audio(url):
+    # Prepare command
+    command = [
+        'yt-dlp',
+        '-x',  # Extract audio
+        '-k',  # Keep video
+        '--audio-format', 'mp3',  # Convert to mp3
+        '-o', 'input.mp3',  # Output filename
+        url  # URL to download
+    ]
+
+    # Execute command
+    print(f'downloading {url}...')
+    subprocess.run(command, check=True)
+    print('done.')
 
 
 def split_audio(file_path, target_folder, chunk_length_ms=60000):
@@ -92,15 +113,19 @@ def process_audio_files(input_folder, output_folder):
 def load_and_adjust_transcriptions(directory):
     transcriptions = []
     for filename in sorted(os.listdir(directory), key=lambda x: int(x.split(".")[0])):  # Sorting files by their integer name
-        with open(f'{directory}/{filename}', 'r') as file:
-            minute_transcriptions = json.load(file)
-        # Adjust the timestamps
-        for transcription in minute_transcriptions:
-            start_time, end_time = transcription["timestamp"]
-            start_time += int(filename.split(".")[0]) * 60  # Add the minutes offset
-            end_time += int(filename.split(".")[0]) * 60
-            transcription["timestamp"] = (start_time, end_time)
-        transcriptions.extend(minute_transcriptions)
+        try:
+            with open(f'{directory}/{filename}', 'r') as file:
+                minute_transcriptions = json.load(file)
+            # Adjust the timestamps
+            for transcription in minute_transcriptions:
+                start_time, end_time = transcription["timestamp"]
+                start_time += int(filename.split(".")[0]) * 60  # Add the minutes offset
+                end_time += int(filename.split(".")[0]) * 60
+                transcription["timestamp"] = (start_time, end_time)
+            transcriptions.extend(minute_transcriptions)
+        except BaseException as e:
+            print(e)
+
     return transcriptions
 
 
@@ -117,5 +142,8 @@ def generate_srt(transcriptions, output_file):
 
 
 if __name__ == '__main__':
+    download_and_extract_audio(sys.argv[1])
     split_audio('input.mp3', 'splited-input')
     process_audio_files('splited-input', 'predictions')
+    transcriptions = load_and_adjust_transcriptions('predictions')
+    generate_srt(transcriptions, 'test.srt')
